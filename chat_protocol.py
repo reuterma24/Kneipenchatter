@@ -3,7 +3,6 @@ import socket
 import threading
 from datetime import datetime, timezone
 
-
 class Session:
     def __init__(self, id, name):
         self.id = id
@@ -17,25 +16,25 @@ class ChatProtocol:
 
     def __init__(self, port_number):
         self.transport = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        print("Starting TCP Socket on port {}.".format(port_number))
         self.transport.bind(("localhost", port_number))
+        print("Starting TCP Socket on port {}.".format(port_number))
         # self.transport.setblocking(False)
 
-    def handle(self, data):
+    def handle(self, data, socket):
         message = RPC.parse(data)
         if RPC.is_valid(message):
             if message["type"] == "session_creation":
-                self.handle_session_creation(message["session_id"], message["session_name"])
+                self.handle_session_creation(message["session_id"], message["session_name"], socket)
             else:
                 print("Unknown message type: {}".format(message["type"]))
 
     def on_connection(self, socket):
         while True:
             try:
-                data, addr = socket.recvfrom(1024)
+                data = socket.recv(1024)
                 if data:
-                    self.handle(data)
-            except BlockingIOError:
+                    self.handle(data, socket)
+            except BlockingIOError: # That can be removed maybe?
                 pass
 
     def listen(self):
@@ -45,11 +44,11 @@ class ChatProtocol:
             threading.Thread(target=self.on_connection, args=[s]).start()
 
 
-    def handle_session_creation(self, session_id, session_name):
+    def handle_session_creation(self, session_id, session_name, socket):
         print("Session-request recieved with ID: " + str(session_id) + " on port:" + str(self.transport.getsockname()[1]))
 
         if True:
-            pass
+            socket.send(RPC.serialize(RPC.accept_session_creation(str(session_id))))
             # send accept
         else:
             pass
@@ -62,6 +61,9 @@ class ChatProtocol:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.connect((ip, port))
                 s.send(RPC.serialize(RPC.session_creation(session_id, session_name)))
+
+                data = s.recv(1024)
+                # check what the answer was from peer and construct Session Struct accordingly (or add socket to some list/close connection)
 
 
     def send_msg(self, session_id, msg, sender):
