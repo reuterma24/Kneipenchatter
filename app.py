@@ -40,4 +40,4 @@ if __name__ == "__main__":
     node = Node(ip="localhost", port=port, ksize=20, alpha=3)
     app = App(node)
 
-    app.chat_protocol.session_creation(42, "Test-Session :)", app.test_closest_nodes())
+    app.chat_protocol.session_creation(43, "Test-Session :)", app.test_closest_nodes())

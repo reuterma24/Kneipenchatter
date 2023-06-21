@@ -1,5 +1,6 @@
 import json
 import socket
+import threading
 from datetime import datetime, timezone
 
 
@@ -20,7 +21,7 @@ class ChatProtocol:
         self.transport.bind(("localhost", port_number))
         # self.transport.setblocking(False)
 
-    def handle(self, data, addr):
+    def handle(self, data):
         message = RPC.parse(data)
         if RPC.is_valid(message):
             if message["type"] == "session_creation":
@@ -28,27 +29,40 @@ class ChatProtocol:
             else:
                 print("Unknown message type: {}".format(message["type"]))
 
-    def listen(self):
-        self.transport.listen()
-        conn, _ = self.transport.accept()
-        print("Vor While Loop")
+    def on_connection(self, socket):
         while True:
-            print("Im While Loop")
             try:
-                data, addr = conn.recvfrom(1024)
+                data, addr = socket.recvfrom(1024)
                 if data:
-                    self.handle(data, addr)
+                    self.handle(data)
             except BlockingIOError:
                 pass
 
+    def listen(self):
+        self.transport.listen()
+        while True:
+            s, _ = self.transport.accept()
+            threading.Thread(target=self.on_connection, args=[s]).start()
+
+
     def handle_session_creation(self, session_id, session_name):
-        print("session recieved: " + str(session_id) + "on port:" + str(self.transport.getsockname()[1]))
+        print("Session-request recieved with ID: " + str(session_id) + " on port:" + str(self.transport.getsockname()[1]))
+
+        if True:
+            pass
+            # send accept
+        else:
+            pass
+            # send reject
+
         self.sessions.append(Session(session_id, session_name))
 
     def session_creation(self, session_id, session_name, possible_peers):
         for ip, port in possible_peers:
-            self.transport.connect((ip, port))
-            self.transport.send(RPC.serialize(RPC.session_creation(session_id, session_name)))
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((ip, port))
+                s.send(RPC.serialize(RPC.session_creation(session_id, session_name)))
+
 
     def send_msg(self, session_id, msg, sender):
         session_timestamp = datetime(2023, 1, 1, 12, 42, 59,
