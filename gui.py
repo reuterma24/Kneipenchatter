@@ -21,24 +21,24 @@ BAR_LENGTH = 100
 NICKNAME = "Alex"
 
 # --------------------- RUNTIME ---------------------
-def runtime(gui_queue, input_FilePath, output_FilePath):
+def runtime(gui_queue, NICKNAME):
   try:
-    logging.info(f"Started processing \nInput File is: {input_FilePath}")
-    print(f"Vorgang gestartet \nEingabedate befindet sich in: {input_FilePath}")
+    logging.info(f"Started protocol with values: {NICKNAME}")
+    print(f"Started protocol with values: {NICKNAME}")
 
     gui_queue.put(0)    #Success
     return(0)
 
   except:
     logging.exception("Exception on runtime")
-    print("Es gab einen Fehler während der Ausführung, bitte melden Sie sich bei dem IT Typ -Arturo Bertoglia")
+    print("There was an exception while running the protocol")
     gui_queue.put(1)    #Error
-    return(1)   #Further exceptions kinds have to be created as Exception  class and given an error code to be catched also in the GUI
+    return(1)
 
   finally:
     #Export Data independet of success or error
-    logging.info(f"Finished processing \nExporting Data to: {output_FilePath}")
-    print(f"Vorgang beendet \nAusgabedatei wird gespeichert im: {output_FilePath}")
+    logging.info(f"Protocol is shutting down")
+    print(f"Protocol is shutting down")
 
 # --------------------- GUI ---------------------
 def main_window():
@@ -50,7 +50,7 @@ def main_window():
     [sg.Multiline(size=(60, 20), reroute_stdout=True, echo_stdout_stderr=True, disabled=True, autoscroll=True)],
     [sg.Text("Message Box: ", s=15, justification="r")],
     [sg.Input(s=(59,5), key="messageText"), sg.Button("Send",s=12 , key="messageEnter", bind_return_key=True)],
-    [sg.Exit(button_text="Exit App", key="exit", s=16, button_color="tomato", pad=((40,0), (0,0))), sg.Button("Start App", s=16, key="start", button_color="green", tooltip="Let´s Go!"), sg.Button("Join Chat", s=16, key="join"), sg.Button("Leave Chat", s=16, key="leave",target=(1,1))],
+    [sg.Exit(button_text="Exit App", key="exit", s=16, button_color="tomato", pad=((40,0), (0,0))), sg.Button("Start Protocol", s=16, key="start", button_color="green", tooltip="Initializes Protocol"), sg.Button("Join Chat", s=16, key="join"), sg.Button("Leave Chat", s=16, key="leave")],
     [sg.Input(NICKNAME, s=(18,1), key="nickname_Value", pad=((500,0),(0,0))), sg.Button("Change Nickname", s=16, key="nickname_Change")]
     ]
 
@@ -71,10 +71,17 @@ def main_window():
       window["start"].update(disabled=True)
       threading.Thread(target=runtime, kwargs={
         "gui_queue": gui_queue,
+        "NICKNAME" : NICKNAME
         }, 
 
         daemon=True).start()
     
+    if event == "join":
+      print("Joining a Chat Group")
+
+    if event == "leave":
+      print("Leaving a Chat Group")
+
     if event == "messageEnter":
       print(NICKNAME + ": " + values["messageText"])
       window["messageText"].update(value = "")
@@ -83,16 +90,15 @@ def main_window():
       NICKNAME = values["nickname_Value"]
       print(f"Your nickname has been changed to: {NICKNAME}")
 
-    
     # --------------- Check for incoming messages from threads  ---------------
     try:
       message = gui_queue.get_nowait()
     
       if message == 0:  #Success - Answer from thread depending on if we can just print the answer or have to check them from queue
-        print("")
+        print("Protocol closed succesfully")
 
       if message == 1:  #All Errors
-        sg.popup_error("Exception ocurred")
+        sg.popup_error("Exception ocurred on Protocol")
     
     except queue.Empty:             # get_nowait() will get exception when Queue is empty
       message = None              # break from the loop if no more messages are queued up

@@ -1,0 +1,4 @@
+INFO:root:1687683429.182908
+INFO:root:Started protocol with values: Alex
+INFO:root:Protocol is shutting down
+INFO:root:--- 45.83337759971619 seconds ---
