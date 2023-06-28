@@ -2,13 +2,13 @@ import sys
 import time
 from chat_protocol import ChatProtocol, send_session_sync
 import threading
-
+from protocol import KademliaProtocol
 
 class ChatApp:
     def __init__(self, user_alias, port):
         self.port = port
         self.chat_protocol = ChatProtocol(user_alias, port)
-        self.kademlia = None  # TODO: init Kademlia after refactoring
+        self.kademlia = KademliaProtocol(port)
 
     def create_chat_room(self, chat_room_name, number_of_peers):
         # TODO: select number_of_peers from kbucket result
