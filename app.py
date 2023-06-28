@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+from pprint import pprint
+from time import sleep
+>>>>>>> b464892 (restart)
 from protocol import KademliaProtocol
 from node import Node
 import threading
@@ -5,7 +10,11 @@ import sys
 
 
 class App:
+<<<<<<< HEAD
     def __init__(self, port):  # rename to Node???
+=======
+    def __init__(self, port):
+>>>>>>> b464892 (restart)
         self.port = port
         self.protocol = KademliaProtocol(port)
         threading.Thread(target=self.protocol.listen).start()
@@ -21,7 +30,17 @@ class App:
         return nodes
 
     def test_closest_nodes(self):
+<<<<<<< HEAD
         return [('127.0.0.1', 1234)]
+=======
+        return [{"u33dc1v0": ("127.0.0.1", 1234)}, {"u33dc1v0": {"127.0.0.1", 1235}}]
+
+    # requested_peers = []
+    # session = ["session1":[u3234":1,"u33123":1], "session2":[u3234":1,"u33123":1]
+    # # 1. Request to closest node
+    # 2. TCP connection to this node
+    # 3. Send message to this node
+>>>>>>> b464892 (restart)
 
 
 if __name__ == "__main__":
