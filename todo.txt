@@ -1,0 +1,19 @@
+Create chat Room
+	Anzahl Peers
+	Name Chatrooms
+	
+Auto Start Protocol
+	Dann Buttons callen die Def
+	
+Send Message
+	Message 
+	Session ID
+	
+Get Message
+	Nachrichten landen in queue as sortierte liste zurück
+	
+Pop-Up
+	Alias Auswählen
+	Dann Constructor starten mit Port, Alias
+	
+Dict mit Timestamp, Alias, Nachricht {(123728062023, "Topo", "Hallo" )}
