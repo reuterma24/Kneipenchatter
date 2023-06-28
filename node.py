@@ -1,7 +1,7 @@
 import geohash
 import geocoder
 
-KBUCKETS = 65
+KBUCKETS = 64
 
 
 def random_id(lat, long):
@@ -31,7 +31,9 @@ def longest_prefix_match(a, b):
 
 def distance(a, b):
     """Return the XOR distance between a and b."""
-    return a ^ b
+    a_bits = convert_string_to_bits(a)
+    b_bits = convert_string_to_bits(b)
+    return int(a_bits, 2) ^ int(b_bits, 2)
 
 
 def get_location():
@@ -43,7 +45,7 @@ def get_location():
 
 
 class Node:
-    def __init__(self, ip, port, ksize, alpha, id="u33dc1v1"):
+    def __init__(self, ip, port, ksize, alpha, id="u0yjje56"):
         self.ip = ip
         self.port = port
         self.ksize = ksize
@@ -58,7 +60,9 @@ class Node:
 
     def update_kbuckets(self, node_id, addr):
         """Update the k-buckets of this node."""
-        kbucket = longest_prefix_match(self.id, node_id)
+        if node_id == self.id:
+            return
+        kbucket = KBUCKETS - longest_prefix_match(self.id, node_id)
         print("Updating kbucket: {}".format(kbucket))
         print("Node id: {}".format(node_id))
         if node_id not in self.kbuckets[kbucket]:
@@ -66,8 +70,31 @@ class Node:
                 self.kbuckets[kbucket][node_id] = addr
             else:
                 self.waiting[kbucket][node_id] = addr
+        else:
+            # Remove the node from kbucket and add it to the end
+            self.kbuckets[kbucket].pop(node_id)
+            self.kbuckets[kbucket][node_id] = addr
 
-    def find_node(self, node_id):
-        """Find the k closest nodes to node_id."""
-        kbucket = longest_prefix_match(self.id, node_id)
-        return self.kbuckets[kbucket]
+    def find_node(self, node_id) -> dict[str, tuple[str, int]]:
+        """Find the k closest nodes to node_id. If corresponding k-bucket has lower then k entry, return the k closest nodes from other k-buckets."""
+        kbucket = KBUCKETS - longest_prefix_match(self.id, node_id)
+        if len(self.kbuckets[kbucket]) >= self.ksize:
+            return self.kbuckets[kbucket]
+        else:
+            # Find k closest nodes from other k-buckets. Check distances when adding to the list. Go through by one index up and one index down.
+            nodes = {}
+            i = kbucket
+            j = kbucket
+            while len(nodes) < self.ksize:
+                if i == -1 and j == 63:
+                    break
+                if i >= 0:
+                    for node in self.kbuckets[i]:
+                        nodes[node] = self.kbuckets[i][node]
+                    i -= 1
+                if j <= 63:
+                    for node in self.kbuckets[j]:
+                        nodes[node] = self.kbuckets[j][node]
+                    j += 1
+            print("Nodes: {}".format(nodes))
+            return nodes
