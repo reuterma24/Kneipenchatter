@@ -13,9 +13,9 @@ class ChatApp:
 
     def create_chat_room(self, chat_room_name, number_of_peers):
         # TODO: select number_of_peers from kbucket result
-        # TODO: create random ID
         peers = []
-        self.chat_protocol.send_session_creation("42", chat_room_name, test_closest_nodes())
+        # id = Util.create_random_session_id()
+        self.chat_protocol.send_session_creation(RANDOM_ID, chat_room_name, test_closest_nodes())
 
     def leave_chat_room(self, chat_room_id):
         self.chat_protocol.send_leave_session(chat_room_id)
@@ -31,13 +31,15 @@ class ChatApp:
         Util.get_messages(session_id, number_of_messages)
 
 
-
 # TODO (Martin):
-# bug: two sockets are established between two clients due to sync message -- not super easy to fix
-# - refactor + more efficient locking?
+# BUG: two sockets are established between two clients due to sync message -- not super easy to fix
+# FIX: implement some sort of handshake to check if peers is already known
 
 
 # following stuff is just for testing
+RANDOM_ID = "42"
+
+
 def test_closest_nodes():
     return [('127.0.0.1', 1234), ('127.0.0.1', 1235), ('127.0.0.1', 1236)]
 
@@ -48,7 +50,7 @@ def initiator(chat_app):
 
 def leaver(chat_app, after_seconds):
     time.sleep(after_seconds)
-    chat_app.leave_chat_room("42")
+    chat_app.leave_chat_room(RANDOM_ID)
 
 
 def joiner(chat_app):
@@ -56,7 +58,7 @@ def joiner(chat_app):
 
 
 def messenger(chat_app, counter):
-    chat_app.send_message("42", "Test-Message " + str(counter))
+    chat_app.send_message(RANDOM_ID, "Test-Message " + str(counter))
     counter += 1
     if counter <= 7:
         threading.Timer(10, messenger, args=[chat_app, counter]).start()
