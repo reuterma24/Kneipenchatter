@@ -1,12 +1,16 @@
 import json
 import socket
 import threading
+import hashlib
 from datetime import datetime, timezone
 
-# TODO: implement a lock, because multiple threads are reading and editing the dict
-# acquire lock only to load a current copy of the relevant session into memory
-# or to update it
+SEPARATOR = "|"
+MSG_BUFFER_SIZE = 20
+MSG_BUFFER_SYNC_THRESHOLD = 5
+
 sessions = dict()
+lock = threading.Lock()
+
 
 class Session:
     def __init__(self, id, name):
@@ -19,17 +23,7 @@ class Session:
         return f"Session(id={self.id}, name={self.name}, peers={self.peers.keys()}, msg_buf={self.msg_buf})"
 
 
-def handle_reject_session_creation(socket):
-    socket.close()
-
-
-def handle_accept_session_creation(session_id, socket):
-    Util.add_peer_to_session(session_id, socket.getpeername(), socket)
-
-
 def handle_session_creation(session_id, session_name, creator_address, socket):
-    print("Session-request received with ID: " + session_id + " from: " + str(creator_address))
-
     if True:  # TODO: add async request to user if he wants to or maybe add to a list and creator keeps chatroom open until ppl join
         Util.resolve_session(session_id, session_name)
         Util.add_peer_to_session(session_id, tuple(creator_address), socket)
@@ -40,71 +34,106 @@ def handle_session_creation(session_id, session_name, creator_address, socket):
         socket.close()
 
 
+def handle_accept_session_creation(session_id, socket):
+    Util.add_peer_to_session(session_id, socket.getpeername(), socket)
+
+
+def handle_reject_session_creation(socket):
+    socket.close()
+
+
 def handle_join_session(address, socket):
-    session = next(iter(sessions.values()))  # we just add to the first session available - silly deadlines :x
-    if session:
-        Util.add_peer_to_session(session.id, tuple(address), socket)
-        # TODO: trigger session_sync (rather run it every couple seconds)
+    if len(sessions) > 0:
+        with lock:
+            session = next(iter(sessions.values()))  # we just add to the first session available - silly deadlines :x
+        if session:
+            Util.add_peer_to_session(session.id, tuple(address), socket)
+    else:
+        socket.close()
 
 
 def handle_leave_session(session_id, address):
     if session_id in sessions:
-        session = sessions[session_id]
-        del session.peers[tuple(address)]
+        with lock:
+            session = sessions[session_id]
+            del session.peers[tuple(address)]
 
 
-def handle_session_sync(session_id, session_name, peers, msg_buf):
-    peers_as_tuples = [tuple(item) for item in peers]
+def handle_session_sync(session_id, session_name, peers):
     session = Util.resolve_session(session_id, session_name)
-    if session:
+    with lock:
+        peers_as_tuples = [tuple(item) for item in peers]
         unknown_peers = set(peers_as_tuples) - set(session.peers.keys())
-        for p in unknown_peers:
-            socket = Util.connect_and_handle(p)
-            if socket:
-                Util.add_peer_to_session(session.id, s.getpeername(), s)
+    for p in unknown_peers:
+        socket = Util.connect_and_handle(p)
+        if socket:
+            Util.add_peer_to_session(session.id, socket.getpeername(), socket)
+
+
+def handle_chat_sync(session_id, session_name, messages):
+    session = Util.resolve_session(session_id, session_name)
+    messages_as_dict = [dict(message) for message in messages]
+    Util.add_messages(session.id, messages_as_dict)
+
+
+def handle_message(session_id, timestamp, msg, user_alias):
+    if session_id in sessions:
+        message = Util.build_message(timestamp, msg, user_alias)
+        Util.add_message(session_id, message)
 
 
 def handle(data, socket):
-    message = RPC.parse(data)
-    if RPC.is_valid(message):
-        if message["type"] == "session_creation":
-            handle_session_creation(message["session_id"], message["session_name"], message["creator_address"], socket)
-        elif message["type"] == "session_sync":
-            handle_session_sync(message["session_id"], message["session_name"], message["known_peers"], message["msg_buf"])
-        elif message["type"] == "accept_session_creation":
-            handle_accept_session_creation(message["session_id"], socket)
-        elif message["type"] == "reject_session_creation":
-            handle_reject_session_creation(socket)
-        elif message["type"] == "join_session":
-            handle_join_session(message["address"], socket)
-        elif message["type"] == "leave_session":
-            handle_leave_session(message["session_id"], message["address"])
-        elif message["type"] == "ping":
-            print("PING received on session " + message["session_id"] + " from " + str(socket.getpeername()))
-        else:
-            print("Unknown message type: {}".format(message["type"]))
+    messages = RPC.parse(data)
+    for message in messages:
+        if RPC.is_valid(message):
+            if message["type"] == "session_creation":
+                handle_session_creation(message["session_id"], message["session_name"], message["creator_address"], socket)
+            elif message["type"] == "session_sync":
+                handle_session_sync(message["session_id"], message["session_name"], message["known_peers"])
+            elif message["type"] == "chat_sync":
+                handle_chat_sync(message["session_id"], message["session_name"], message["messages"])
+            elif message["type"] == "accept_session_creation":
+                handle_accept_session_creation(message["session_id"], socket)
+            elif message["type"] == "reject_session_creation":
+                handle_reject_session_creation(socket)
+            elif message["type"] == "join_session":
+                handle_join_session(message["address"], socket)
+            elif message["type"] == "leave_session":
+                handle_leave_session(message["session_id"], message["address"])
+            elif message["type"] == "msg_to_session":
+                handle_message(message["session_id"], message["timestamp"], message["msg"], message["user_alias"])
+            elif message["type"] == "ping":
+                # print("PING received on session from " + str(socket.getpeername()))
+                pass
+            else:
+                print("Unknown message type: {}".format(message["type"]))
 
 
-def on_connection(socket):
-    while True:
+def send_session_sync(session):
+    with lock:
+        for k, socket in session.peers.items():
+            peers_as_list = [list(k) for k, v in session.peers.items() if
+                             v != socket]  # remove the peer you are talking to
+            socket.send(RPC.serialize(RPC.session_sync(session.id, session.name, peers_as_list)))
+
+
+def send_chat_sync(session):
+    recent_messages = Util.get_messages(session.id, MSG_BUFFER_SYNC_THRESHOLD)
+    with lock:
+        for socket in session.peers.values():
+            socket.send(RPC.serialize(RPC.chat_sync(session.id, session.name, recent_messages)))
+
+
+def sync():
+    for session in sessions.values():
         try:
-            data = socket.recv(1024)
-            if data:
-                handle(data, socket)
-        except (ConnectionResetError, ConnectionAbortedError):
-            socket.close()
-            print("Connection closed to peer.")
-            break
+            Util.sanitize_peers(session.peers)
+            send_session_sync(session)
+            send_chat_sync(session)
+        except (ConnectionResetError, ConnectionAbortedError, OSError):
+            pass  # just to be safe - if the timing is unlucky a connection might be closed immediately after sanitize_peers()
 
-
-def send_session_sync(session_id):
-    # idea is to execute that every couple seconds?
-    # Idea: drop peers from session object if the socket is not open anymore?
-    session = sessions[session_id]
-    if session:
-        for s in session.peers.values():
-            peers_as_list = [list(k) for k, v in session.peers.items() if v != s]  # remove the peer you are talking to
-            s.send(RPC.serialize(RPC.session_sync(session.id, session.name, peers_as_list, session.msg_buf)))
+    threading.Timer(5, sync).start()
 
 
 class ChatProtocol:
@@ -115,17 +144,15 @@ class ChatProtocol:
         self.transport.bind(self.address)
         print("Starting TCP Socket on port {}.".format(port_number))
         threading.Thread(target=self.listen).start()
+        threading.Thread(target=sync).start()
         # self.transport.setblocking(False)
-
-    def print_sessions(self):
-        for s in sessions.values():
-            print("Session: " + str(s))
 
     def listen(self):
         self.transport.listen()
         while True:
             s, _ = self.transport.accept()
-            threading.Thread(target=on_connection, args=[s]).start()
+            threading.Thread(target=Util.on_connection, args=[s]).start()
+            print("Connection to new peer " + str(s.getpeername()) + " established!")
 
     def send_session_creation(self, session_id, session_name, possible_peers):
         session = Util.resolve_session(session_id, session_name)
@@ -134,45 +161,53 @@ class ChatProtocol:
             if socket:
                 socket.send(RPC.serialize(RPC.session_creation(session.id, session.name, self.address)))
 
-    def send_leave_session(self, session_id):
-        if session_id in sessions:
-            session = sessions.pop(session_id)
-            for s in session.peers.values():
-                s.send(RPC.serialize(RPC.leave_session(session_id, self.address)))
-                s.close()
-
     def send_join_session(self, peers):
         for p in peers:
             socket = Util.connect_and_handle(p)
             if socket:
                 socket.send(RPC.serialize(RPC.join_session(self.address)))
 
-    def send_msg(self, session_id, msg, sender):
-        session_timestamp = datetime(2023, 1, 1, 12, 42, 59,
-                                     tzinfo=timezone.utc)  # should be the timestamp set during chatroom creation
-        local_time = datetime.now(timezone.utc)
-        diff = local_time - session_timestamp
-        offset = diff.total_seconds()  # use this value to sort incoming messages
+    def send_leave_session(self, session_id):
+        if session_id in sessions:
+            with lock:
+                session = sessions.pop(session_id)
+            for s in session.peers.values():
+                s.send(RPC.serialize(RPC.leave_session(session_id, self.address)))
+                s.close()
 
-        # TODO: iterate over existing TCP addrinfo and send message to each
+    def send_msg(self, session_id, msg):
+        if session_id in sessions:
+            message = Util.build_message(Util.create_timestamp(), msg, self.user_alias)
+            Util.add_message(session_id, message)
+            with lock:
+                for socket in sessions[session_id].peers.values():
+                    socket.send(RPC.serialize(
+                        RPC.msg_to_session(session_id, message["timestamp"], message["msg"], message["user_alias"])))
 
 
 class Util:
     @staticmethod
+    def print_sessions():
+        with lock:
+            for s in sessions.values():
+                print("Session: " + str(s))
+
+    @staticmethod
     def resolve_session(session_id, session_name):
         if session_id in sessions:
-            return sessions[session_id]
+            with lock:
+                return sessions[session_id]
 
         session = Session(session_id, session_name)
         sessions[session_id] = session
         return session
 
-
     @staticmethod
     def add_peer_to_session(session_id, key, socket):
-        session = sessions.get(session_id)
-        if session:
-            session.peers[key] = socket
+        with lock:
+            session = sessions.get(session_id)
+            if session:
+                session.peers[key] = socket
 
     @staticmethod
     def connect_and_handle(peer):
@@ -183,17 +218,83 @@ class Util:
             return None
 
         # start a thread for each established connection
-        threading.Thread(target=on_connection, args=[s]).start()
+        threading.Thread(target=Util.on_connection, args=[s]).start()
         return s
+
+    @staticmethod
+    def on_connection(socket):
+        while True:
+            try:
+                data = socket.recv(4096)
+                if data:
+                    handle(data, socket)
+            except (ConnectionResetError, ConnectionAbortedError, OSError):
+                socket.close()
+                print("Connection closed to peer.")
+                break
+
+    @staticmethod
+    def sanitize_peers(peers):
+        with lock:
+            closed_sockets = []
+            for key, socket in peers.items():
+                try:
+                    socket.send(RPC.serialize(RPC.ping()))
+                except (ConnectionResetError, ConnectionAbortedError, OSError):
+                    closed_sockets.append(key)
+
+            for key in closed_sockets:
+                del peers[key]
+
+    @staticmethod
+    def create_timestamp():
+        return int(datetime.now(timezone.utc).timestamp())
+
+    @staticmethod
+    def build_message(timestamp, msg, user_alias):
+        hash_input = str(timestamp) + msg + user_alias
+        hash = hashlib.md5(hash_input.encode(), usedforsecurity=False).hexdigest()
+        return dict(timestamp=timestamp, msg=msg, user_alias=user_alias, hash=hash)
+
+    @staticmethod
+    def add_message(session_id, message):  # TODO: remove me!
+        if session_id in sessions:
+            with lock:
+                buffer = sessions[session_id].msg_buf
+                size = len(buffer)
+                index = 0
+                while index < size and buffer[index]["timestamp"] <= message["timestamp"]:
+                    index += 1
+                buffer.insert(index, message)
+                if size + 1 > MSG_BUFFER_SIZE:
+                    buffer.pop(0)
+
+    @staticmethod
+    def add_messages(session_id, messages):  # could be improved since they are ordered by timestamp
+        if session_id in sessions:
+            with lock:
+                buffer = sessions[session_id].msg_buf
+                incoming_hashes = {m["hash"] for m in messages}
+                known_hashes = {m["hash"] for m in buffer}
+                unknown_hashes = incoming_hashes.difference(known_hashes)
+                unknown_messages = [m for m in messages if m["hash"] in unknown_hashes]
+            for m in unknown_messages:
+                Util.add_message(session_id, m)
+
+    @staticmethod
+    def get_messages(session_id, n):
+        if session_id in sessions:
+            with lock:
+                buffer = sessions[session_id].msg_buf
+                return list(buffer)[-n:]  # TODO: Don't think a deep copy is necessary if passed to GUI - we will see
 
 
 class RPC:
     # For testing purposes
     @staticmethod
-    def ping(session_id):
+    def ping():
         return {
-            "type": "ping",
-            "session_id": session_id
+            "type": "ping"
         }
 
     @staticmethod
@@ -206,20 +307,28 @@ class RPC:
         }
 
     @staticmethod
-    def session_sync(session_id, session_name, known_peers, msg_buf):
+    def session_sync(session_id, session_name, known_peers):
         return {
             "type": "session_sync",
             "session_id": session_id,
             "session_name": session_name,
-            "known_peers": known_peers,
-            "msg_buf": msg_buf
+            "known_peers": known_peers
+        }
+
+    @staticmethod
+    def chat_sync(session_id, session_name, messages):
+        return {
+            "type": "chat_sync",
+            "session_id": session_id,
+            "session_name": session_name,
+            "messages": messages
         }
 
     @staticmethod
     def join_session(address):
         return {
             "type": "join_session",
-            "address" : address
+            "address": address
         }
 
     @staticmethod
@@ -236,13 +345,13 @@ class RPC:
         }
 
     @staticmethod
-    def msg_to_session(session_id, msg, time_offset, sender):
+    def msg_to_session(session_id, timestamp, msg, user_alias):
         return {
             "type": "msg_to_session",
             "session_id": session_id,
+            "timestamp": timestamp,
             "msg": msg,
-            "time_offset": time_offset,
-            "sender": sender,
+            "user_alias": user_alias,
         }
 
     @staticmethod
@@ -262,11 +371,19 @@ class RPC:
 
     @staticmethod
     def serialize(message):
-        return json.dumps(message).encode("utf-8")
+        content = json.dumps(message) + SEPARATOR
+        return content.encode("utf-8")
 
     @staticmethod
     def parse(data):
-        return json.loads(data.decode("utf-8"))
+        parsed_objects = []
+        json_strings = data.decode("utf-8").split(SEPARATOR)[:-1]  # split and ignore last empty element
+        for json_string in json_strings:
+            try:
+                parsed_objects.append(json.loads(json_string))
+            except json.JSONDecodeError as e:
+                print(f"JSON decoding error: {e}")
+        return parsed_objects
 
     @staticmethod
     def is_valid(message):
@@ -277,6 +394,7 @@ class RPC:
             "session_sync",
             "leave_session",
             "join_session",
+            "msg_to_session",
+            "chat_sync",
             "ping"
-            # TODO: rest nachtragen
         ]
