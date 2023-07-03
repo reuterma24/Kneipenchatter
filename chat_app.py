@@ -27,7 +27,7 @@ class ChatApp:
     def send_message(self, session_id, msg):
         self.chat_protocol.send_msg(session_id, msg)
 
-    def get_message(self, session_id, number_of_messages):
+    def get_messages(self, session_id, number_of_messages):
         Util.get_messages(session_id, number_of_messages)
 
 
