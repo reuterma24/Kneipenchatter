@@ -1,6 +1,6 @@
 import sys
 import time
-from chat_protocol import ChatProtocol, send_session_sync, Util
+from chat_protocol import ChatProtocol, Util
 import threading
 from protocol import KademliaProtocol
 
@@ -9,7 +9,7 @@ class ChatApp:
     def __init__(self, user_alias, port):
         self.port = port
         self.chat_protocol = ChatProtocol(user_alias, port)
-        #self.kademlia = KademliaProtocol(port)
+        # self.kademlia = KademliaProtocol(port)
 
     def create_chat_room(self, chat_room_name, number_of_peers):
         # TODO: select number_of_peers from kbucket result
@@ -24,20 +24,16 @@ class ChatApp:
         # TODO: select reasonable amount from kbucket
         self.chat_protocol.send_join_session(test_closest_nodes())
 
+    def send_message(self, session_id, msg):
+        self.chat_protocol.send_msg(session_id, msg)
 
-# TODO GUI -> Protocol:
-# sendMessage(sessionId, message)
-# getMessage(sessionId) returns (sortierte Liste[timestamp, msg, userAlias])
+    def get_message(self, session_id, number_of_messages):
+        Util.get_messages(session_id, number_of_messages)
 
-# Message Array Format:
-# [{"timestamp": 1234566123, "msg": "A", "alias": "Username1"},
-# {"timestamp": 1234566123, "msg": "A", "alias": "Username1"}]
 
 
 # TODO (Martin):
-# bug: two sockets between two clients -- not super easy to fix
-# - integrate session time
-# - send and sync messages
+# bug: two sockets are established between two clients due to sync message -- not super easy to fix
 # - refactor + more efficient locking?
 
 
@@ -59,6 +55,13 @@ def joiner(chat_app):
     chat_app.join_chat_room()
 
 
+def messenger(chat_app, counter):
+    chat_app.send_message("42", "Test-Message " + str(counter))
+    counter += 1
+    if counter <= 7:
+        threading.Timer(10, messenger, args=[chat_app, counter]).start()
+
+
 def print_sessions_periodically(chat_app):
     Util.print_sessions()
     threading.Timer(10, print_sessions_periodically, args=[chat_app]).start()
@@ -77,3 +80,5 @@ if __name__ == "__main__":
             leaver(chatApp, 25)
         elif role == "j":
             joiner(chatApp)
+        elif role == "m":
+            messenger(chatApp, 0)
