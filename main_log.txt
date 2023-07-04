@@ -1,3 +1,0 @@
-INFO:root:1688485554.901673
-INFO:root:Started protocol with values: sfsf
-INFO:root:--- 17.36678147315979 seconds ---
