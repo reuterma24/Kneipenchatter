@@ -1,13 +1,18 @@
-INFO:root:1688493059.9056284
+INFO:root:1688493493.6442502
 INFO:root:Started protocol with values: 
 Nickname : R2 
 Port : 64000
+WARNING:root:Exception while getting messages
 INFO:root:Code:CG 
-Text: 25
+Text: 2
+WARNING:root:Exception while getting messages
 INFO:root:Code:MS 
 Text:Hola
+WARNING:root:Exception while getting messages
 INFO:root:Code:MS 
-Text:lalala
+Text:Hola
+WARNING:root:Exception while getting messages
 INFO:root:Code:LG 
 Text:1
-INFO:root:--- 22.291964530944824 seconds ---
+WARNING:root:Exception while getting messages
+INFO:root:--- 14.219148874282837 seconds ---
