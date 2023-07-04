@@ -18,13 +18,20 @@ scriptName = "Kneipenchatter Deluxe v0.1"
 FILEPATH_LOGO = r"/home/arturo/Dokumente/HU-Berlin/4.SS/Peer2Peer/PapaTangoPapa/data/logo.png"
 #[sg.Image(FILEPATH_LOGO, p=((250,0),(10,10)))]
 BAR_LENGTH = 100
-NICKNAME = "Alex"
+NICKNAME = None
+PORT  = 431001
 
 # --------------------- RUNTIME ---------------------
-def runtime(gui_queue, NICKNAME):
+def runtime(gui_queue):
+  global NICKNAME, PORT
+
   try:
     logging.info(f"Started protocol with values: {NICKNAME}")
     print(f"Started protocol with values: {NICKNAME}")
+
+    while True:
+      print(f"Alive on Port: {PORT}")
+      time.sleep(5)
 
     gui_queue.put(0)    #Success
     return(0)
@@ -42,7 +49,7 @@ def runtime(gui_queue, NICKNAME):
 
 # --------------------- GUI ---------------------
 def main_window():
-  global NICKNAME
+  global NICKNAME, PORT
   gui_queue = queue.Queue()  # queue used to communicate between the gui and the threads
   
   layout = [
@@ -50,14 +57,15 @@ def main_window():
     [sg.Multiline(size=(60, 20), reroute_stdout=True, echo_stdout_stderr=True, disabled=True, autoscroll=True)],
     [sg.Text("Message Box: ", s=15, justification="r")],
     [sg.Input(s=(59,5), key="messageText"), sg.Button("Send",s=12 , key="messageEnter", bind_return_key=True)],
-    [sg.Exit(button_text="Exit App", key="exit", s=16, button_color="tomato", pad=((40,0), (0,0))), sg.Button("Create Chatroom", s=16, key="start", button_color="green", tooltip="Initializes Protocol"), sg.Button("Join Chat", s=16, key="join"), sg.Button("Leave Chat", s=16, key="leave")],
-    [sg.Input(NICKNAME, s=(18,1), key="nickname_Value", pad=((500,0),(0,0))), sg.Button("Change Nickname", s=16, key="nickname_Change")]
+    [sg.Exit(button_text="Exit App", key="exit", s=16, button_color="tomato", pad=((40,0), (0,0))), sg.Button("Create Chatroom", s=16, key="start", button_color="green", tooltip="Initializes Protocol"), sg.Button("Join Chat", s=16, key="join"), sg.Button("Leave Chat", s=16, key="leave")]
     ]
 
+  #layout_nickname = [[sg.Input(NICKNAME, s=(18,1), key="nickname_Value", pad=((500,0),(0,0))), sg.Button("Change Nickname", s=16, key="nickname_Change")]]
+  
   window = sg.Window(scriptName, layout, use_custom_titlebar=False,no_titlebar=False ,size=(1000,720), grab_anywhere=True, finalize=True)
   window.bind("<Escape>", "_Escape")
 
-  print(f"Welcome to {scriptName} we hope you enjoy your stay! \nYour current nickname is: {NICKNAME}")
+  print(f"Welcome to {scriptName} we hope you enjoy your stay!")
 
   # --------------------- EVENT LOOP ---------------------
   while True: 
@@ -67,14 +75,15 @@ def main_window():
     if event in ("exit", sg.WINDOW_CLOSED, "_Escape"):
       break
 
-    if event == "start":
-      window["start"].update(disabled=True)
-      threading.Thread(target=runtime, kwargs={
-        "gui_queue": gui_queue,
-        "NICKNAME" : NICKNAME
-        }, 
+    if NICKNAME == None:  #So this is the first thing Happening, a pop-up window that will block everything until a nickname is given
+      NICKNAME = sg.popup_get_text(message="Please enter your Nickname", title="Nickname Setup")
+      print(f"Your current nickname is: {NICKNAME}")
 
-        daemon=True).start()
+    if len(threading.enumerate()) < 2 and NICKNAME != None:  #Once a nickname is given we initialize the protocol. This will also keep spawning the protocol if that thread somehow gets killed.
+      window["start"].update(disabled=True)
+      threading.Thread(target=runtime, 
+                        kwargs={"gui_queue":  gui_queue}, 
+                        daemon=True).start()
     
     if event == "join":
       print("Joining a Chat Group")
@@ -85,10 +94,6 @@ def main_window():
     if event == "messageEnter":
       print(NICKNAME + ": " + values["messageText"])
       window["messageText"].update(value = "")
-
-    if event == "nickname_Change":
-      NICKNAME = values["nickname_Value"]
-      print(f"Your nickname has been changed to: {NICKNAME}")
 
     # --------------- Check for incoming messages from threads  ---------------
     try:
