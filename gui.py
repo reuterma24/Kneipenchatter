@@ -62,8 +62,9 @@ def runtime():
     
     while True:
       try:
-        for msg in ChatApp.get_messages():
-          print(msg)
+        if "Is in a Chat Room": #Here we would somehow know we are in a room and check for messages
+          for msg in ChatApp.get_messages(session_id="", number_of_messages=10):
+            print(msg)
       except:
         logging.warning("Exception while getting messages")
 
