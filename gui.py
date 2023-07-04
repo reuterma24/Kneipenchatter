@@ -3,8 +3,8 @@
 
 import logging, time, os, queue, threading, sys
 import PySimpleGUI as sg
-
-#sg.theme_previewer()
+from chat_protocol import ChatProtocol, Util
+from kademlia.protocol import KademliaProtocol
 
 #Logging
 start_time = time.time()
@@ -19,27 +19,86 @@ FILEPATH_LOGO = r"/home/arturo/Dokumente/HU-Berlin/4.SS/Peer2Peer/PapaTangoPapa/
 #[sg.Image(FILEPATH_LOGO, p=((250,0),(10,10)))]
 BAR_LENGTH = 100
 NICKNAME = None
-PORT  = 431001
+GUI_QUEUE = queue.Queue()  # queue used to communicate between the app and the gui
+APP_QUEUE = queue.Queue()  # queue used to communicate between the gui and the app
+PORT  = 64000
+
+class ChatApp:
+    def __init__(self, user_alias, port):
+        self.port = port
+        self.chat_protocol = ChatProtocol(user_alias, port)
+        self.kademlia = KademliaProtocol(port)
+
+    def create_chat_room(self, chat_room_name, number_of_peers):
+        # TODO: select number_of_peers from kbucket result
+        peers = []
+        # id = Util.create_random_session_id()
+        self.chat_protocol.send_session_creation(RANDOM_ID, chat_room_name, test_closest_nodes())
+
+    def leave_chat_room(self, chat_room_id):
+        self.chat_protocol.send_leave_session(chat_room_id)
+
+    def join_chat_room(self):
+        # TODO: select reasonable amount from kbucket
+        self.chat_protocol.send_join_session(test_closest_nodes())
+
+    def send_message(self, session_id, msg):
+        self.chat_protocol.send_msg(session_id, msg)
+
+    def get_messages(self, session_id, number_of_messages):
+        Util.get_messages(session_id, number_of_messages)
+
 
 # --------------------- RUNTIME ---------------------
-def runtime(gui_queue):
-  global NICKNAME, PORT
+def runtime():
+  global NICKNAME, PORT, GUI_QUEUE, APP_QUEUE
 
   try:
-    logging.info(f"Started protocol with values: {NICKNAME}")
-    print(f"Started protocol with values: {NICKNAME}")
+    logging.info(f"Started protocol with values: \nNickname : {NICKNAME} \nPort : {PORT}")
+    #print(f"Started protocol with values: \nNickname : {NICKNAME} \nPort : {PORT}")
 
+    app = ChatApp
+    #app = ChatApp.__init__(app, NICKNAME, PORT)
+    
     while True:
-      print(f"Alive on Port: {PORT}")
-      time.sleep(5)
+      try:
+        for msg in ChatApp.get_messages():
+          print(msg)
+      except:
+        logging.warning("Exception while getting messages")
 
-    gui_queue.put(0)    #Success
+      try:
+        message = APP_QUEUE.get()
+        code = str(message).split(":", 1)[0]
+        text = str(message).split(":", 1)[1]
+        logging.info(f"Code:{code} \nText:{text}")
+
+        if code == "MS":
+          print(f"{NICKNAME} : {text}")
+          #app.send_message(self=ChatApp, session_id=123, msg=text)
+           
+        if code == "CG":
+          print(f"Creating a Chat Room for {text} peers")
+          #ChatApp.create_chat_room(chat_room_name="", number_of_peers="")
+        
+        if code == "JG":
+          print("Joining a Chat Room")
+          #ChatApp.join_chat_room()
+
+        if code == "LG":
+          print("Leaving a Chat Room")
+          #ChatApp.leave_chat_room(chat_room_id="")
+
+      except queue.Empty:
+         message = None
+         
+    GUI_QUEUE.put(0)    #Success
     return(0)
 
   except:
     logging.exception("Exception on runtime")
     print("There was an exception while running the protocol")
-    gui_queue.put(1)    #Error
+    GUI_QUEUE.put(1)    #Error
     return(1)
 
   finally:
@@ -49,18 +108,15 @@ def runtime(gui_queue):
 
 # --------------------- GUI ---------------------
 def main_window():
-  global NICKNAME, PORT
-  gui_queue = queue.Queue()  # queue used to communicate between the gui and the threads
+  global NICKNAME, PORT, GUI_QUEUE, APP_QUEUE
   
   layout = [
     [sg.Text(scriptName, s=30, justification="c", text_color="white", font=("Helvetica", 18))],
     [sg.Multiline(size=(60, 20), reroute_stdout=True, echo_stdout_stderr=True, disabled=True, autoscroll=True)],
     [sg.Text("Message Box: ", s=15, justification="r")],
-    [sg.Input(s=(59,5), key="messageText"), sg.Button("Send",s=12 , key="messageEnter", bind_return_key=True)],
-    [sg.Exit(button_text="Exit App", key="exit", s=16, button_color="tomato", pad=((40,0), (0,0))), sg.Button("Create Chatroom", s=16, key="start", button_color="green", tooltip="Initializes Protocol"), sg.Button("Join Chat", s=16, key="join"), sg.Button("Leave Chat", s=16, key="leave")]
+    [sg.Input(s=(59,5), key="messageText", disabled=True), sg.Button("Send",s=12 , key="messageEnter", bind_return_key=True, disabled=True)],
+    [sg.Exit(button_text="Exit App", key="exit", s=16, button_color="tomato", pad=((40,0), (0,0))), sg.Button("Create Chatroom", s=16, key="create", button_color="green", tooltip="Initializes Protocol"), sg.Button("Join Chat", s=16, key="join"), sg.Button("Leave Chat", s=16, key="leave", disabled=True)]
     ]
-
-  #layout_nickname = [[sg.Input(NICKNAME, s=(18,1), key="nickname_Value", pad=((500,0),(0,0))), sg.Button("Change Nickname", s=16, key="nickname_Change")]]
   
   window = sg.Window(scriptName, layout, use_custom_titlebar=False,no_titlebar=False ,size=(1000,720), grab_anywhere=True, finalize=True)
   window.bind("<Escape>", "_Escape")
@@ -80,25 +136,42 @@ def main_window():
       print(f"Your current nickname is: {NICKNAME}")
 
     if len(threading.enumerate()) < 2 and NICKNAME != None:  #Once a nickname is given we initialize the protocol. This will also keep spawning the protocol if that thread somehow gets killed.
-      window["start"].update(disabled=True)
-      threading.Thread(target=runtime, 
-                        kwargs={"gui_queue":  gui_queue}, 
-                        daemon=True).start()
+      threading.Thread(target=runtime, daemon=True).start()
     
+    if event == "create":
+      window["create"].update(disabled=True)
+      window["join"].update(disabled=True)
+      window["leave"].update(disabled=False)
+      window["messageText"].update(disabled=False)
+      window["messageEnter"].update(disabled=False)
+
+      number_of_peers = sg.popup_get_text(message="How many peers should be allowed in the room?", title="Number of Peers")
+      APP_QUEUE.put(f"CG: {number_of_peers}")
+
     if event == "join":
-      print("Joining a Chat Group")
+      window["create"].update(disabled=True)
+      window["join"].update(disabled=True)
+      window["leave"].update(disabled=False)
+      window["messageText"].update(disabled=False)
+      window["messageEnter"].update(disabled=False)
+
+      APP_QUEUE.put("JG:" + "1")
 
     if event == "leave":
-      print("Leaving a Chat Group")
+      window["create"].update(disabled=False)
+      window["join"].update(disabled=False)
+      window["leave"].update(disabled=True)
+      window["messageText"].update(disabled=True)
+      window["messageEnter"].update(disabled=True)
+      APP_QUEUE.put("LG:" + "1")
 
     if event == "messageEnter":
-      print(NICKNAME + ": " + values["messageText"])
+      APP_QUEUE.put("MS:" + (values["messageText"]))
       window["messageText"].update(value = "")
 
     # --------------- Check for incoming messages from threads  ---------------
     try:
-      message = gui_queue.get_nowait()
-    
+      message = GUI_QUEUE.get_nowait()
       if message == 0:  #Success - Answer from thread depending on if we can just print the answer or have to check them from queue
         print("Protocol closed succesfully")
 

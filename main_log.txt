@@ -1,0 +1,13 @@
+INFO:root:1688493059.9056284
+INFO:root:Started protocol with values: 
+Nickname : R2 
+Port : 64000
+INFO:root:Code:CG 
+Text: 25
+INFO:root:Code:MS 
+Text:Hola
+INFO:root:Code:MS 
+Text:lalala
+INFO:root:Code:LG 
+Text:1
+INFO:root:--- 22.291964530944824 seconds ---
