@@ -1,28 +1,25 @@
 # 24.26.2023
 # Starte mit extra Port Argumente für Bootstrapping
 
-import logging, time, os, queue, threading, sys
+import logging, os, queue, threading, sys, datetime, time
 import PySimpleGUI as sg
 from chat_protocol import ChatProtocol, Util
 from protocol import KademliaProtocol
 from random import randrange
 
-# Logging
-start_time = time.time()
-logging_FilePath = os.getcwd() + '//main_log.txt'
-logging.basicConfig(filename=logging_FilePath, filemode="w", encoding='utf-8', level=logging.DEBUG)
-logging.info(start_time)
-print("Script Start")
-scriptName = "Kneipenchatter Deluxe v0.1"
-
 # Constants
-# FILEPATH_LOGO = r"/home/arturo/Dokumente/HU-Berlin/4.SS/Peer2Peer/PapaTangoPapa/data/logo.png"
-# [sg.Image(FILEPATH_LOGO, p=((250,0),(10,10)))]
-BAR_LENGTH = 100
 NICKNAME = None
 GUI_QUEUE = queue.Queue()  # queue used to communicate between the app and the gui
 APP_QUEUE = queue.Queue()  # queue used to communicate between the gui and the app
 PORT = int(sys.argv[1])  # Starte manuell mit extra Port para
+
+# Logging
+scriptName = "Kneipenchatter Deluxe v0.1"
+start_time = datetime.datetime.now().strftime(r"%m/%d/%Y, %H:%M:%S")
+logging_FilePath = f"{os.getcwd()}//main_log_{PORT}.txt"
+logging.basicConfig(filename=logging_FilePath, filemode="w", encoding='utf-8', level=logging.DEBUG)
+logging.info(f"{scriptName}\n{start_time}")
+print("Script Start")
 
 
 class ChatApp:
@@ -61,34 +58,39 @@ class ChatApp:
         else:
             return None
 
-
 # --------------------- RUNTIME ---------------------
 def runtime():
     global NICKNAME, PORT, GUI_QUEUE, APP_QUEUE
 
     try:
-        logging.info(f"Started protocol with values: \nNickname : {NICKNAME} \nPort : {PORT}")
-        # print(f"Started protocol with values: \nNickname : {NICKNAME} \nPort : {PORT}")
+        logging.info(f"Started protocol with values: \n\tNickname : {NICKNAME} \n\tPort : {PORT}")
         app = ChatApp(NICKNAME, PORT)
+        messages_old = []   #Messages Starter
 
         while True:
             try:
                 if app.get_single_session_id():  # Here we check for the Session ID Property of the app. If we are not in a chat room it would be none
+                    logging.debug("Got a Session ID")
                     time.sleep(1)  # To avoid it overloading
-                    messages = [m["msg"] for m in app.get_messages(number_of_messages=10)]
-                    for msg in messages:
-                        print(msg)
+
+                    messages_new =  app.get_messages(number_of_messages=10) #Get list of dicts with keys timestamp, msg, user_alias, hash
+                    messages_diff = [x for x in messages_new if x not in messages_old]  #Check New against Old
+                    
+                    for entry in messages_diff:
+                        converted_ticks = datetime.datetime.now() + datetime.timedelta(microseconds = entry["timestamp"]/10)
+                        print(converted_ticks.strftime(r"%m/%d/%Y, %H:%M:%S") + " " + entry["user_alias"] + " : " + entry["msg"])
+                        messages_old.append(entry) #Update Old list
+
             except:
                 logging.warning("Exception while getting messages")
 
             try:
-                message = APP_QUEUE.get()
-                code = str(message).split(":", 1)[0]
-                text = str(message).split(":", 1)[1]
-                logging.info(f"Code:{code} \nText:{text}")
+                message = APP_QUEUE.get(timeout=1)      #Maybe change to getnowait and see what happens
+                code, text = str(message).split(":", 1)
+                logging.info(f"\n\tCode:{code} \n\tText:{text}")
 
                 if code == "MS":
-                    print(f"{NICKNAME} : {text}")
+                    logging.info(f"\tsend_message {text}")
                     app.send_message(msg=text)
 
                 if code == "CG":
@@ -159,31 +161,31 @@ def main_window():
             threading.Thread(target=runtime, daemon=True).start()
 
         if event == "create":
-            window["create"].update(disabled=True)
-            window["join"].update(disabled=True)
-            window["leave"].update(disabled=False)
-            window["messageText"].update(disabled=False)
-            window["messageEnter"].update(disabled=False)
+            #window["create"].update(disabled=True)
+            #window["join"].update(disabled=True)
+            #window["leave"].update(disabled=False)
+            #window["messageText"].update(disabled=False)
+            #window["messageEnter"].update(disabled=False)
 
             number_of_peers = sg.popup_get_text(message="How many of you closest peers do you want to ask?",
                                                 title="Number of Peers")
             APP_QUEUE.put(f"CG: {number_of_peers}")
 
         if event == "join":
-            window["create"].update(disabled=True)
-            window["join"].update(disabled=True)
-            window["leave"].update(disabled=False)
-            window["messageText"].update(disabled=False)
-            window["messageEnter"].update(disabled=False)
+            #window["create"].update(disabled=True)
+            #window["join"].update(disabled=True)
+            #window["leave"].update(disabled=False)
+            #window["messageText"].update(disabled=False)
+            #window["messageEnter"].update(disabled=False)
 
             APP_QUEUE.put("JG:" + "1")
 
         if event == "leave":
-            window["create"].update(disabled=False)
-            window["join"].update(disabled=False)
-            window["leave"].update(disabled=True)
-            window["messageText"].update(disabled=True)
-            window["messageEnter"].update(disabled=True)
+            #window["create"].update(disabled=False)
+            #window["join"].update(disabled=False)
+            #window["leave"].update(disabled=True)
+            #window["messageText"].update(disabled=True)
+            #window["messageEnter"].update(disabled=True)
             APP_QUEUE.put("LG:" + "1")
 
         if event == "messageEnter":
@@ -214,6 +216,7 @@ if __name__ == "__main__":
     main_window()
 
 # Logging
-logging.info("--- %s seconds ---" % (time.time() - start_time))
+end_time = datetime.datetime.now().strftime(r"%m/%d/%Y, %H:%M:%S")
+logging.info(end_time)
 print("--- %s seconds ---" % (time.time() - start_time))
 print("Safe Exit")
