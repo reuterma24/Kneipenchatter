@@ -1,5 +1,6 @@
 import geohash
 import geocoder
+from random import randrange
 
 KBUCKETS = 64
 
@@ -45,7 +46,7 @@ def get_location():
 
 
 class Node:
-    def __init__(self, ip, port, ksize, alpha, id="u33d9trz"):
+    def __init__(self, ip, port, ksize, alpha, id=str(randrange(0, 999999))):
         self.ip = ip
         self.port = port
         self.ksize = ksize
