@@ -166,9 +166,11 @@ class ChatProtocol:
             Util.add_message(session_id, message)
             with lock:
                 for socket in sessions[session_id].peers.values():
-                    socket.send(RPC.serialize(
-                        RPC.msg_to_session(session_id, message["timestamp"], message["msg"], message["user_alias"])))
-
+                    try:
+                        socket.send(RPC.serialize(RPC.msg_to_session(session_id, message["timestamp"], message["msg"], message["user_alias"])))
+                    except (ConnectionResetError, ConnectionAbortedError, OSError):
+                        print("Connection to peer closed.")
+                        pass  # just to be safe - if unlucky timing a connection might be closed immediately after sanitize_peers()
 
 class Util:
     @staticmethod

@@ -9,20 +9,19 @@ class ChatApp:
     def __init__(self, user_alias, port):
         self.port = port
         self.chat_protocol = ChatProtocol(user_alias, port)
-        # self.kademlia = KademliaProtocol(port)
+        self.kademlia = KademliaProtocol(port)
 
     def create_chat_room(self, chat_room_name, number_of_peers):
-        # TODO: select number_of_peers from kbucket result
-        peers = []
+        peers = list(self.kademlia.sourceNode.find_node(self.kademlia.sourceNode.id).values())[:number_of_peers]
         # id = Util.create_random_session_id()
-        self.chat_protocol.send_session_creation(RANDOM_ID, chat_room_name, test_closest_nodes())
+        self.chat_protocol.send_session_creation(RANDOM_ID, chat_room_name, peers)
 
     def leave_chat_room(self, chat_room_id):
         self.chat_protocol.send_leave_session(chat_room_id)
 
     def join_chat_room(self):
-        # TODO: select reasonable amount from kbucket
-        self.chat_protocol.send_join_session(test_closest_nodes())
+        peers = list(self.kademlia.sourceNode.find_node(self.kademlia.sourceNode.id).values())
+        self.chat_protocol.send_join_session(peers)
 
     def send_message(self, session_id, msg):
         self.chat_protocol.send_msg(session_id, msg)
@@ -45,7 +44,8 @@ def test_closest_nodes():
 
 
 def initiator(chat_app):
-    chat_app.create_chat_room("Test-Session", test_closest_nodes())
+    time.sleep(5)
+    chat_app.create_chat_room("Test Room 2", 20)
 
 
 def leaver(chat_app, after_seconds):
@@ -60,8 +60,7 @@ def joiner(chat_app):
 def messenger(chat_app, counter):
     chat_app.send_message(RANDOM_ID, "Test-Message " + str(counter))
     counter += 1
-    if counter <= 7:
-        threading.Timer(10, messenger, args=[chat_app, counter]).start()
+    threading.Timer(10, messenger, args=[chat_app, counter]).start()
 
 
 def print_sessions_periodically(chat_app):

@@ -45,7 +45,7 @@ def get_location():
 
 
 class Node:
-    def __init__(self, ip, port, ksize, alpha, id="u0yjje56"):
+    def __init__(self, ip, port, ksize, alpha, id="u33d9trb"):
         self.ip = ip
         self.port = port
         self.ksize = ksize
