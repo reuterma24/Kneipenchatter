@@ -5,6 +5,7 @@ import logging, time, os, queue, threading, sys
 import PySimpleGUI as sg
 from chat_protocol import ChatProtocol, Util
 from kademlia.protocol import KademliaProtocol
+from random import randrange
 
 #Logging
 start_time = time.time()
@@ -15,13 +16,13 @@ print("Script Start")
 scriptName = "Kneipenchatter Deluxe v0.1"
 
 #Constants
-FILEPATH_LOGO = r"/home/arturo/Dokumente/HU-Berlin/4.SS/Peer2Peer/PapaTangoPapa/data/logo.png"
+#FILEPATH_LOGO = r"/home/arturo/Dokumente/HU-Berlin/4.SS/Peer2Peer/PapaTangoPapa/data/logo.png"
 #[sg.Image(FILEPATH_LOGO, p=((250,0),(10,10)))]
 BAR_LENGTH = 100
 NICKNAME = None
 GUI_QUEUE = queue.Queue()  # queue used to communicate between the app and the gui
 APP_QUEUE = queue.Queue()  # queue used to communicate between the gui and the app
-PORT  = int(sys.argv[1])
+PORT  = int(sys.argv[1])   #Starte manuell mit extra Port para
 
 class ChatApp:
     def __init__(self, user_alias, port):
@@ -60,8 +61,9 @@ def runtime():
     
     while True:
       try:
-        if "Is in a Chat Room": #Here we would somehow know we are in a room and check for messages
-          for msg in ChatApp.get_messages(session_id="", number_of_messages=10):
+        if app.session_id: #Here we check for the Session ID Property of the app. If we are not in a chat room it would be none
+          time.sleep(1) #To avoid it overloading
+          for msg in ChatApp.get_messages(session_id=app.session_id, number_of_messages=10):
             print(msg)
       except:
         logging.warning("Exception while getting messages")
@@ -74,19 +76,20 @@ def runtime():
 
         if code == "MS":
           print(f"{NICKNAME} : {text}")
-          app.send_message(self=ChatApp, session_id=123, msg=text)
+          app.send_message(session_id=app.session_id, msg=text)
            
         if code == "CG":
-          print(f"Creating a Chat Room for {text} peers")
-          #ChatApp.create_chat_room(chat_room_name="", number_of_peers="")
+          chat_room_name = str(randrange(0,999999))
+          print(f"Creating a Chat Room named {chat_room_name} for {text} peers")
+          app.create_chat_room(chat_room_name=chat_room_name, number_of_peers=text)
         
         if code == "JG":
           print("Joining a Chat Room")
-          #ChatApp.join_chat_room()
+          app.join_chat_room()
 
         if code == "LG":
           print("Leaving a Chat Room")
-          #ChatApp.leave_chat_room(chat_room_id="")
+          app.leave_chat_room(chat_room_id=app.session_id)
 
       except queue.Empty:
          message = None
