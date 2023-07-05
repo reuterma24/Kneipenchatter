@@ -1,5 +1,6 @@
 import json
 from pprint import pprint
+import logging
 import socket
 import threading
 import time
@@ -23,7 +24,7 @@ class KademliaProtocol:
         self.find_nearest_nodes(self.sourceNode.id)
 
     def join(self):
-        if self.sourceNode.port == 1234:
+        if self.sourceNode.port == BOOTSTRAP_NODE[1]:
             return
         print("Joining the network.")
         self.find_node(self.sourceNode.id, BOOTSTRAP_NODE)

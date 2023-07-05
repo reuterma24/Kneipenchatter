@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime, timezone
 from chat_protocol_resources import Session, RPC, MSG_BUFFER_SIZE, MSG_BUFFER_SYNC_THRESHOLD, SYNC_INTERVAL
 
-
 sessions = dict()
 lock = threading.Lock()
 
@@ -167,10 +166,12 @@ class ChatProtocol:
             with lock:
                 for socket in sessions[session_id].peers.values():
                     try:
-                        socket.send(RPC.serialize(RPC.msg_to_session(session_id, message["timestamp"], message["msg"], message["user_alias"])))
+                        socket.send(RPC.serialize(RPC.msg_to_session(session_id, message["timestamp"], message["msg"],
+                                                                     message["user_alias"])))
                     except (ConnectionResetError, ConnectionAbortedError, OSError):
                         print("Connection to peer closed.")
                         pass  # just to be safe - if unlucky timing a connection might be closed immediately after sanitize_peers()
+
 
 class Util:
     @staticmethod
@@ -279,3 +280,7 @@ class Util:
             with lock:
                 buffer = sessions[session_id].msg_buf
                 return list(buffer)[-n:]  # TODO: Don't think a deep copy is necessary if passed to GUI - we will see
+
+    @staticmethod
+    def get_session_ids():
+        return list(sessions.keys())
