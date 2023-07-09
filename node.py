@@ -1,13 +1,17 @@
+from random import randrange
+
 import geohash
 import geocoder
-from random import randrange
 
 KBUCKETS = 64
 
 
-def random_id(lat, long):
+def random_id(lat, long, use_lat_long):
     """Generate a random 160-bit string."""
-    return geohash.encode(lat, long, precision=8)
+    if use_lat_long:
+        return geohash.encode(lat, long, precision=8)
+    else:
+        return geohash.encode(randrange(50, 60), randrange(50, 60), precision=8)
 
 
 # Convert a string to binary and return as one string
@@ -46,13 +50,13 @@ def get_location():
 
 
 class Node:
-    def __init__(self, ip, port, ksize, alpha, id=str(randrange(0, 999999))):
+    def __init__(self, ip, port, ksize, alpha):
         self.ip = ip
         self.port = port
         self.ksize = ksize
         self.alpha = alpha
         location = get_location()
-        self.id = id or random_id(location[0], location[1])
+        self.id = random_id(location[0], location[1], False)
         self.kbuckets = {}
         self.waiting = {}
         for i in range(KBUCKETS):
@@ -77,25 +81,26 @@ class Node:
             self.kbuckets[kbucket][node_id] = addr
 
     def find_node(self, node_id) -> dict[str, tuple[str, int]]:
-        """Find the k closest nodes to node_id. If corresponding k-bucket has lower then k entry, return the k closest nodes from other k-buckets."""
+        """Find the k closest nodes to node_id. If corresponding k-bucket has fewer than k entries, return the k closest nodes from other k-buckets."""
         kbucket = KBUCKETS - longest_prefix_match(self.id, node_id)
         if len(self.kbuckets[kbucket]) >= self.ksize:
             return self.kbuckets[kbucket]
-        else:
-            # Find k closest nodes from other k-buckets. Check distances when adding to the list. Go through by one index up and one index down.
-            nodes = {}
-            i = kbucket
-            j = kbucket
-            while len(nodes) < self.ksize:
-                if i == -1 and j == 63:
-                    break
-                if i >= 0:
-                    for node in self.kbuckets[i]:
-                        nodes[node] = self.kbuckets[i][node]
-                    i -= 1
-                if j <= 63:
-                    for node in self.kbuckets[j]:
-                        nodes[node] = self.kbuckets[j][node]
-                    j += 1
-            print("Nodes: {}".format(nodes))
-            return nodes
+
+        # Find k closest nodes from other k-buckets.
+        nodes = {}
+        i = j = kbucket
+
+        while len(nodes) < self.ksize:
+            if i >= 0:
+                for node in self.kbuckets[i]:
+                    nodes[node] = self.kbuckets[i][node]
+                i -= 1
+            if j < 64:
+                for node in self.kbuckets[j]:
+                    nodes[node] = self.kbuckets[j][node]
+                j += 1
+            if i < 0 and j >= 64:
+                break
+
+        print("Nodes: {}".format(nodes))
+        return nodes
