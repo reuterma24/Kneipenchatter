@@ -9,6 +9,8 @@ from random import randrange
 
 # Constants
 NICKNAME = None
+NODE_ID = None
+SESSION_ID = None
 GUI_QUEUE = queue.Queue()  # queue used to communicate between the app and the gui
 APP_QUEUE = queue.Queue()  # queue used to communicate between the gui and the app
 PORT = int(sys.argv[1])  # Starte manuell mit extra Port para
@@ -60,29 +62,35 @@ class ChatApp:
 
 # --------------------- RUNTIME ---------------------
 def runtime():
-    global NICKNAME, PORT, GUI_QUEUE, APP_QUEUE
+    global NICKNAME, PORT, GUI_QUEUE, APP_QUEUE, NODE_ID, SESSION_ID
 
     try:
         logging.info(f"Started protocol with values: \n\tNickname : {NICKNAME} \n\tPort : {PORT}")
         app = ChatApp(NICKNAME, PORT)
         messages_old = []   #Messages Starter
+        NODE_ID = app.kademlia.sourceNode.id
+        GUI_QUEUE.put(f"NI:{NODE_ID}")  #Actualizes Node ID in GUI
 
         while True:
-            try:
-                if app.get_single_session_id():  # Here we check for the Session ID Property of the app. If we are not in a chat room it would be none
-                    logging.debug("Got a Session ID")
-                    time.sleep(1)  # To avoid it overloading
+            
+            if app.get_single_session_id():  # Here we check for the Session ID Property of the app. If we are not in a chat room it would be none. This could control the GUI as well
+                SESSION_ID = app.get_single_session_id()
+                GUI_QUEUE.put(f"SI:{SESSION_ID}")   #Actualize Session ID in GUI
+                logging.debug("Got a Session ID")
+                time.sleep(1)  # To avoid it overloading
 
-                    messages_new =  app.get_messages(number_of_messages=10) #Get list of dicts with keys timestamp, msg, user_alias, hash
-                    messages_diff = [x for x in messages_new if x not in messages_old]  #Check New against Old
-                    
-                    for entry in messages_diff:
-                        converted_ticks = datetime.datetime.now() + datetime.timedelta(microseconds = entry["timestamp"]/10)
-                        print(converted_ticks.strftime(r"%m/%d/%Y, %H:%M:%S") + " " + entry["user_alias"] + " : " + entry["msg"])
-                        messages_old.append(entry) #Update Old list
+                messages_new =  app.get_messages(number_of_messages=10) #Get list of dicts with keys timestamp, msg, user_alias, hash
+                messages_diff = [x for x in messages_new if x not in messages_old]  #Check New against Old
+                
+                for entry in messages_diff:
+                    converted_ticks = datetime.datetime.now() + datetime.timedelta(microseconds = entry["timestamp"]/10)
+                    print(converted_ticks.strftime(r"%m/%d/%Y, %H:%M:%S") + " " + entry["user_alias"] + " : " + entry["msg"])
+                    messages_old.append(entry) #Update Old list
 
-            except:
-                logging.warning("Exception while getting messages")
+            else:
+                logging.warning("No Session ID")
+                SESSION_ID = None
+                GUI_QUEUE.put(f"SI:{SESSION_ID}")   #Empty Session ID in GUI
 
             try:
                 message = APP_QUEUE.get(timeout=1)      #Maybe change to getnowait and see what happens
@@ -109,14 +117,11 @@ def runtime():
             except queue.Empty:
                 message = None
 
-        GUI_QUEUE.put(0)  # Success
-        return 0
-
     except:
         logging.exception("Exception on runtime")
         print("There was an exception while running the protocol")
-        GUI_QUEUE.put(1)  # Error
-        return (1)
+        GUI_QUEUE.put("EC:1")  # Error
+        return ("EC:1")
 
     finally:
         # Export Data independet of success or error
@@ -126,17 +131,21 @@ def runtime():
 
 # --------------------- GUI ---------------------
 def main_window():
-    global NICKNAME, PORT, GUI_QUEUE, APP_QUEUE
+    global NICKNAME, PORT, GUI_QUEUE, APP_QUEUE, NODE_ID
 
     layout = [
-        [sg.Text(scriptName, s=30, justification="c", text_color="white", font=("Helvetica", 18))],
+        [sg.Text(scriptName, s=35, justification="l", text_color="white", font=("Helvetica", 18)), 
+         sg.Text(f"Nickname: {NICKNAME}", s=30, justification="c", key="name", text_color="black", background_color="white")], 
+        [sg.Text(f"Port: {PORT}", s=12, justification="c", key="port", text_color="black", background_color="white"),
+        sg.Text(f"Node ID: {NODE_ID}", s=16, justification="c", key="node_id", text_color="black", background_color="white"),
+        sg.Text(f"Session ID: {SESSION_ID}", s=48, justification="c", key="session_id", text_color="black", background_color="white")],
         [sg.Multiline(size=(60, 20), reroute_stdout=True, echo_stdout_stderr=True, disabled=True, autoscroll=True)],
         [sg.Text("Message Box: ", s=15, justification="r")],
-        [sg.Input(s=(59, 5), key="messageText", disabled=False),
-         sg.Button("Send", s=12, key="messageEnter", bind_return_key=True, disabled=False)],
+        [sg.Input(s=(59, 5), key="messageText", disabled=True),
+         sg.Button("Send", s=12, key="messageEnter", bind_return_key=True, disabled=True)],
         [sg.Exit(button_text="Exit App", key="exit", s=16, button_color="tomato", pad=((40, 0), (0, 0))),
          sg.Button("Create Chatroom", s=16, key="create", button_color="green", tooltip="Initializes Protocol"),
-         sg.Button("Join Chat", s=16, key="join"), sg.Button("Leave Chat", s=16, key="leave", disabled=False)]
+         sg.Button("Join Chat", s=16, key="join"), sg.Button("Leave Chat", s=16, key="leave", disabled=True)]
     ]
 
     window = sg.Window(scriptName, layout, use_custom_titlebar=False, no_titlebar=False, size=(1000, 720),
@@ -159,33 +168,17 @@ def main_window():
 
         if len(threading.enumerate()) < 2 and NICKNAME != None:  # Once a nickname is given we initialize the protocol. This will also keep spawning the protocol if that thread somehow gets killed.
             threading.Thread(target=runtime, daemon=True).start()
+            window["name"].update(value=f"Nickname: {NICKNAME}")
 
         if event == "create":
-            #window["create"].update(disabled=True)
-            #window["join"].update(disabled=True)
-            #window["leave"].update(disabled=False)
-            #window["messageText"].update(disabled=False)
-            #window["messageEnter"].update(disabled=False)
-
             number_of_peers = sg.popup_get_text(message="How many of you closest peers do you want to ask?",
                                                 title="Number of Peers")
             APP_QUEUE.put(f"CG: {number_of_peers}")
 
         if event == "join":
-            #window["create"].update(disabled=True)
-            #window["join"].update(disabled=True)
-            #window["leave"].update(disabled=False)
-            #window["messageText"].update(disabled=False)
-            #window["messageEnter"].update(disabled=False)
-
             APP_QUEUE.put("JG:" + "1")
 
         if event == "leave":
-            #window["create"].update(disabled=False)
-            #window["join"].update(disabled=False)
-            #window["leave"].update(disabled=True)
-            #window["messageText"].update(disabled=True)
-            #window["messageEnter"].update(disabled=True)
             APP_QUEUE.put("LG:" + "1")
 
         if event == "messageEnter":
@@ -195,11 +188,32 @@ def main_window():
         # --------------- Check for incoming messages from threads  ---------------
         try:
             message = GUI_QUEUE.get_nowait()
-            if message == 0:  # Success - Answer from thread depending on if we can just print the answer or have to check them from queue
-                print("Protocol closed succesfully")
+            code, text = str(message).split(":", 1)
+            logging.info(f"\n\tCode:{code} \n\tText:{text}")
+            
+            if code == "NI":     #Node ID
+                window["node_id"].update(value=f"Node ID: {NODE_ID}")
 
-            if message == 1:  # All Errors
+            if code == "SI":     #Session ID    I
+                window["session_id"].update(value=f"Session ID: {SESSION_ID}")  #This is just to always update the ID in the GUI
+
+                if SESSION_ID != None:  #Logic for success/we are in a chat group
+                    window["create"].update(disabled=True)
+                    window["join"].update(disabled=True)
+                    window["leave"].update(disabled=False)
+                    window["messageText"].update(disabled=False)
+                    window["messageEnter"].update(disabled=False)
+                else:           #Logic for failure/we are not in a chat group
+                    window["create"].update(disabled=False)
+                    window["join"].update(disabled=False)
+                    window["leave"].update(disabled=True)
+                    window["messageText"].update(disabled=True)
+                    window["messageEnter"].update(disabled=True)
+
+
+            if code == "EC":  # All Errors
                 sg.popup_error("Exception ocurred on Protocol")
+                break   #Avoid that crazy loop
 
         except queue.Empty:  # get_nowait() will get exception when Queue is empty
             message = None  # break from the loop if no more messages are queued up
@@ -217,6 +231,5 @@ if __name__ == "__main__":
 
 # Logging
 end_time = datetime.datetime.now().strftime(r"%m/%d/%Y, %H:%M:%S")
-logging.info(end_time)
-print("--- %s seconds ---" % (time.time() - start_time))
+logging.info(f"{scriptName}\n{end_time}")
 print("Safe Exit")
