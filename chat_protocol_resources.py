@@ -4,7 +4,7 @@ SEPARATOR = "|"
 
 MSG_BUFFER_SIZE = 20
 MSG_BUFFER_SYNC_THRESHOLD = 5
-SYNC_INTERVAL = 5
+SYNC_INTERVAL = 2
 
 class Session:
     def __init__(self, id, name):
