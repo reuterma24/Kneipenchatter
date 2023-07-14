@@ -149,7 +149,7 @@ def main_window():
     ]
 
     window = sg.Window(scriptName, layout, use_custom_titlebar=False, no_titlebar=False, size=(1000, 720),
-                       grab_anywhere=True, finalize=True)
+                       grab_anywhere=True, finalize=True, resizable=True)
     window.bind("<Escape>", "_Escape")
 
     print(f"Welcome to {scriptName} we hope you enjoy your stay!")
